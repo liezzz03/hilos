@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <fcntl.h> // para open() y las constantes O_RDONLY, ...
 #include <unistd.h> // para read, write, close
+#include "retardo.h"
 
 static int* asientos = NULL; // Puntero al arreglo de asientos (NULL si no hay sala creada)
 static int n_asientos = 0; //  número total de asientos en la sala
@@ -60,6 +61,7 @@ int reserva_asiento(int id_persona) {
 
     for (int i = 0; i < n_asientos; i++) {
         if (asientos[i] == -1) { // Encontrar primer asiento libre
+            pausa_aleatoria(0.1);
             asientos[i] = id_persona;
             return (i + 1); // Retornar id en rango [1, n_asientos]
         }
