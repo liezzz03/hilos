@@ -12,6 +12,18 @@ static int n_asientos = 0; //  número total de asientos en la sala
 
 static pthread_mutex_t cerrojo = PTHREAD_MUTEX_INITIALIZER;
 
+static pthread_cond_t cond_hay_sitio = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t cond_hay_reservas = PTHREAD_COND_INITIALIZER;
+
+// función auxiliar interna para contar sin bloquear (evita interbloques)
+int asientos_libres_interna() {
+    int ocupados = 0;
+    for (int i = 0; i < n_asientos; i++) {
+        if (asientos[i] != -1) ocupados++;
+    }
+    return n_asientos - ocupados;
+}
+
 //Crea una nueva sala con la capacidad especificada
 //Retorna el número de asientos si se crea correctamente, -1 en caso de error
 int crea_sala(int capacidad) {
@@ -68,10 +80,6 @@ int asientos_ocupados() {
 
 // Retorna el número de asientos libres, o -1 si no existe la sala
 int asientos_libres() {
-    // No bloqueamos aquí porque llamamos a funciones que ya bloquean (asientos_ocupados)
-    // Pero como asientos_ocupados bloquea y libera, es más seguro bloquear aquí
-    // y usar lógica interna para evitar "deadlocks".
-    // Sin embargo, para mantener tu estructura, bloquearemos y consultaremos directamente.
     pthread_mutex_lock(&cerrojo);
     if (asientos == NULL) {
         pthread_mutex_unlock(&cerrojo);
@@ -97,11 +105,17 @@ int reserva_asiento(int id_persona) {
         return -1;
     }
 
+    // si no hay sitio, el hilo espera
+    while (asientos_libres_interna() == 0) {
+        pthread_cond_wait(&cond_hay_sitio, &cerrojo);
+    }
+
     for (int i = 0; i < n_asientos; i++) {
         if (asientos[i] == -1) { // Encontrar primer asiento libre
-            // Aunque quites el comentario de la pausa, el mutex evitará el fallo
-            // pausa_aleatoria(0.1);
+            //pausa_aleatoria(0.1);
             asientos[i] = id_persona;
+            // AVISAMOS de que ahora hay una reserva disponible para liberar
+            pthread_cond_broadcast(&cond_hay_reservas);
             pthread_mutex_unlock(&cerrojo);
             return (i + 1); // Retornar id en rango [1, n_asientos]
         }
@@ -119,14 +133,20 @@ int libera_asiento(int id_asiento) {
         return -1;
     }
 
-    int index = id_asiento - 1;
-    if (asientos[index] == -1) {
+    //si el asiento esta libre, esperamos a que alguien lo reserve
+    while (asientos_libres_interna() == n_asientos) {        // Como queremos liberar, esperamos a que haya reservas
+        pthread_cond_wait(&cond_hay_reservas, &cerrojo);
+    }
+
+    if (id_asiento < 1 || id_asiento > n_asientos) {
         pthread_mutex_unlock(&cerrojo);
         return -1; // Asiento ya libre
     }
 
-    int id_persona = asientos[index];
-    asientos[index] = -1; // Liberar asiento
+    int id_persona = asientos[id_asiento-1];
+    asientos[id_asiento-1] = -1; // Liberar asiento
+    // AVISAMOS de que hemos liberado un sitio
+    pthread_cond_broadcast(&cond_hay_sitio);
     pthread_mutex_unlock(&cerrojo);
     return id_persona;
 }
@@ -141,6 +161,7 @@ int libera_persona(int id_persona) {
     for (int i = 0; i < n_asientos; i++) {
         if (asientos[i] == id_persona) {
             asientos[i] = -1; // Liberamos el asiento
+            pthread_cond_broadcast(&cond_hay_sitio); // Avisamos que hay sitio libre
             pthread_mutex_unlock(&cerrojo);
             return (i + 1);    // Devolvemos el número de asiento que ocupaba (1..N)
         }
