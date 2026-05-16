@@ -1,10 +1,10 @@
 #include <stdlib.h>
-#include "sala.h"
+#include "../sala.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h> // para open() y las constantes O_RDONLY, ...
 #include <unistd.h> // para read, write, close
-#include "retardo.h"
+#include "../retardo.h"
 #include <pthread.h> // Necesario para el mutex
 
 static int* asientos = NULL; // Puntero al arreglo de asientos (NULL si no hay sala creada)

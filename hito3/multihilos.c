@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
-#include "sala.h"
-#include "retardo.h"
+#include "../sala.h"
+#include "../retardo.h"
 
 //HITO 3
 typedef struct {
