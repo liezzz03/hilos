@@ -13,6 +13,6 @@ Para ejecutar por hitos se puede ejecutar las órdenes:
 
 Similar para los otros dos hitos, mientras que para el reto con hacer los siguientes comandos es suficiente:
 
-> gcc -o reto reto.c hito3/sala.c retardo.c -lpthread
+> $ gcc -o reto reto.c hito3/sala.c retardo.c -lpthread
 
-> ./reto 
+> $ ./reto 12 2
