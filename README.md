@@ -11,8 +11,21 @@ Para ejecutar por hitos se puede ejecutar las órdenes:
 
 *Para el hito1*
 
-Similar para los otros dos hitos, mientras que para el reto con hacer los siguientes comandos es suficiente:
+> $ gcc -o hito2/multihilos hito2/multihilos.c hito2/sala.c retardo.c -lpthread
 
-> $ gcc -o reto reto.c hito3/sala.c retardo.c -lpthread
+> $ ./hito2/multhilos 100
 
-> $ ./reto 12 2
+*Para el hito2*
+
+> $ gcc -o hito2/multihilos hito2/multihilos.c hito2/sala.c retardo.c -lpthread
+
+> $ ./hito2/multhilos 6 6
+
+*Para el hito3*
+
+
+> $ gcc -o reto1/reto reto.c hito3/sala.c retardo.c -lpthread
+
+> $ ./reto1/reto 12 2
+
+*Para el reto*
