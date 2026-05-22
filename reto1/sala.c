@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <stdio.h>
 #include "../sala.h"
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -16,10 +15,7 @@ static pthread_mutex_t cerrojo = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond_hay_sitio = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t cond_hay_reservas = PTHREAD_COND_INITIALIZER;
 
-// Función externa definida en multihilos.c para consultar liberadores activos
-extern int quedan_liberadores();
-
-// Función auxiliar interna para contar sin bloquear (evita interbloqueos)
+// función auxiliar interna para contar sin bloquear (evita interbloques)
 int asientos_libres_interna() {
     int ocupados = 0;
     for (int i = 0; i < n_asientos; i++) {
@@ -28,8 +24,8 @@ int asientos_libres_interna() {
     return n_asientos - ocupados;
 }
 
-// Crea una nueva sala con la capacidad especificada
-// Retorna el número de asientos si se crea correctamente, -1 en caso de error
+//Crea una nueva sala con la capacidad especificada
+//Retorna el número de asientos si se crea correctamente, -1 en caso de error
 int crea_sala(int capacidad) {
     pthread_mutex_lock(&cerrojo);
     // No permitir crear una sala si ya existe una o si la capacidad es inválida
@@ -100,8 +96,8 @@ int asientos_libres() {
     return libres;
 }
 
-// Reserva el primer asiento libre para la persona con id_persona
-// Cancela la ejecución si la sala está llena y ya no quedan liberadores activos
+//Reserva el primer asiento libre para la persona con id_persona
+//Retorna el id del asiento reservado, o -1 si falla
 int reserva_asiento(int id_persona) {
     pthread_mutex_lock(&cerrojo);
     if (asientos == NULL || id_persona <= 0) {
@@ -109,32 +105,26 @@ int reserva_asiento(int id_persona) {
         return -1;
     }
 
-    // El hilo espera MIENTRAS la sala esté llena Y ADEMÁS sigan quedando liberadores vivos trabajando
-    while (asientos_libres_interna() == 0 && quedan_liberadores() > 0) {
+    // si no hay sitio, el hilo espera
+    while (asientos_libres_interna() == 0) {
         pthread_cond_wait(&cond_hay_sitio, &cerrojo);
     }
 
-    // Si salimos del bucle porque la sala está llena pero ya NO quedan liberadores activos...
-    if (asientos_libres_interna() == 0) {
-        printf("[SALA] Hilo %d: Sala llena y no quedan liberadores activos. Cancelando y terminando.\n", id_persona);
-        pthread_mutex_unlock(&cerrojo);
-        return -1; // Retorna error controlado para abortar el interbloqueo
-    }
-
-    // Si salimos del bucle porque realmente hay sitio libre, reservamos normalmente:
     for (int i = 0; i < n_asientos; i++) {
-        if (asientos[i] == -1) {
+        if (asientos[i] == -1) { // Encontrar primer asiento libre
+            //pausa_aleatoria(0.1);
             asientos[i] = id_persona;
+            // AVISAMOS de que ahora hay una reserva disponible para liberar
             pthread_cond_broadcast(&cond_hay_reservas);
             pthread_mutex_unlock(&cerrojo);
-            return (i + 1);
+            return (i + 1); // Retornar id en rango [1, n_asientos]
         }
     }
     pthread_mutex_unlock(&cerrojo);
-    return -1;
+    return -1; // Sala llena
 }
 
-// Libera el asiento especificado por id_asiento
+// Librea el asiento especificado por id_asiento
 // Retorna el id de la persona que lo ocupaba, o -1 si falla
 int libera_asiento(int id_asiento) {
     pthread_mutex_lock(&cerrojo);
@@ -143,14 +133,18 @@ int libera_asiento(int id_asiento) {
         return -1;
     }
 
-    // Si el asiento está libre, esperamos a que alguien lo reserve
-    while (asientos_libres_interna() == n_asientos) {
+    //si el asiento esta libre, esperamos a que alguien lo reserve
+    while (asientos_libres_interna() == n_asientos) {        // Como queremos liberar, esperamos a que haya reservas
         pthread_cond_wait(&cond_hay_reservas, &cerrojo);
+    }
+
+    if (id_asiento < 1 || id_asiento > n_asientos) {
+        pthread_mutex_unlock(&cerrojo);
+        return -1; // Asiento ya libre
     }
 
     int id_persona = asientos[id_asiento-1];
     asientos[id_asiento-1] = -1; // Liberar asiento
-
     // AVISAMOS de que hemos liberado un sitio
     pthread_cond_broadcast(&cond_hay_sitio);
     pthread_mutex_unlock(&cerrojo);
@@ -229,6 +223,8 @@ int reserva_asiento_especifico(int id_asiento, int id_persona) {
 
 // Implementación de la prueba de reserva múltiple (Todo o nada)
 int reserva_multiple(int npersonas, int* lista_id) {
+    // Al ser una operación que usa otras funciones de la API,
+    // bloqueamos aquí y usamos lógica interna para no causar interbloqueo.
     pthread_mutex_lock(&cerrojo);
 
     if (npersonas <= 0 || lista_id == NULL || asientos == NULL) {
@@ -247,6 +243,7 @@ int reserva_multiple(int npersonas, int* lista_id) {
 
     int exitos = 0;
     for (int i = 0; i < npersonas; i++) {
+        // Lógica de reserva directa para evitar llamar a reserva_asiento (que ya tiene lock)
         for (int j = 0; j < n_asientos; j++) {
             if (asientos[j] == -1) {
                 asientos[j] = lista_id[i];
@@ -265,6 +262,7 @@ int guarda_estado_sala(const char* ruta_fichero){
         pthread_mutex_unlock(&cerrojo);
         return -1;
     }
+    // abrimos el fichero. 0664 permisos de lectura/escrityra (rw-rw-r--)
     int fd = open(ruta_fichero, O_WRONLY | O_CREAT | O_TRUNC, 0664);
     if (fd == -1) {
         pthread_mutex_unlock(&cerrojo);
@@ -298,16 +296,19 @@ int recupera_estado_sala(const char* ruta_fichero) {
         return -1;
     }
     int capacidad_fichero;
+    //leemos la capacidad guardada en el fichero
     if (read(fd, &capacidad_fichero, sizeof(int)) != sizeof(int)) {
         close(fd);
         pthread_mutex_unlock(&cerrojo);
         return -1;
     }
+    //la capacidad debe coincidir con la de la sala actual
     if (capacidad_fichero != n_asientos) {
         close(fd);
         pthread_mutex_unlock(&cerrojo);
         return -1;
     }
+    //leemos el estado de los asientos y sobrescribimos el array actual
     size_t bytes_a_leer = n_asientos * sizeof(int);
     if (read(fd, asientos, bytes_a_leer) != (ssize_t)bytes_a_leer) {
         close(fd);
@@ -325,6 +326,7 @@ int guarda_estado_parcial_sala(const char* ruta_fichero, size_t num_asientos, in
         pthread_mutex_unlock(&cerrojo);
         return -1;
     }
+    // Abrimos en modo Lectura/Escritura (O_RDWR) porque el fichero debe existir
     int fd = open(ruta_fichero, O_RDWR);
     if (fd == -1) {
         pthread_mutex_unlock(&cerrojo);
@@ -342,7 +344,7 @@ int guarda_estado_parcial_sala(const char* ruta_fichero, size_t num_asientos, in
         return -1;
     }
     for (size_t k = 0; k < num_asientos; k++) {
-        int i = id_asientos[k];
+        int i = id_asientos[k]; //número de asiento (ej: 1, 5, 10...)
         if (i < 1 || i > n_asientos) continue;
 
         off_t posicion = sizeof(int) + (i - 1) * sizeof(int);
@@ -403,11 +405,4 @@ int recupera_estado_parcial_sala(const char* ruta_fichero, size_t num_asientos, 
     close(fd);
     pthread_mutex_unlock(&cerrojo);
     return 0;
-}
-
-// Función para forzar el despertar de todos los reservas cuando los liberadores mueren
-void despierta_hilos_bloqueados() {
-    pthread_mutex_lock(&cerrojo);
-    pthread_cond_broadcast(&cond_hay_sitio);
-    pthread_mutex_unlock(&cerrojo);
 }

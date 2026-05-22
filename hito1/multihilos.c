@@ -14,7 +14,6 @@ void* funcion_hilo(void* arg) {
     int mis_asientos[3];
     int reservas_hechas = 0;
 
-    // 1. Intentar 3 reservas con retardo
     for (int i = 0; i < 3; i++) {
         // Pausa aleatoria para forzar que los hilos se mezclen
         pausa_aleatoria(0.5);
@@ -30,14 +29,13 @@ void* funcion_hilo(void* arg) {
         }
     }
 
-    // 2. Intentar liberar los asientos que logramos reservar
     for (int i = 0; i < reservas_hechas; i++) {
         pausa_aleatoria(0.5);
 
         int resultado = libera_asiento(mis_asientos[i]);
         if (resultado == -1 || resultado != datos->id_hilo) {
             // Este error evidencia la corrupción: alguien nos quitó o sobrescribió el asiento
-            fprintf(stderr, ">>> ERROR CORRUPCIÓN: Hilo %d no pudo liberar su asiento %d (Estaba ocupado por %d o vacío)\n",
+            fprintf(stderr, ">>> ERROR: Hilo %d no pudo liberar su asiento %d (Estaba ocupado por %d o vacío)\n",
                     datos->id_hilo, mis_asientos[i], resultado);
         } else {
             printf("Hilo %d: Liberado asiento %d\n", datos->id_hilo, mis_asientos[i]);
@@ -51,7 +49,7 @@ void* funcion_hilo(void* arg) {
 void* hilo_estado(void* arg) {
     while (1) {
         pausa_aleatoria(1.0);
-        printf("\n--- ESTADO ACTUAL: %d ocupados ---\n\n", asientos_ocupados());
+        printf("\nESTADO ACTUAL: %d ocupados\n\n", asientos_ocupados());
     }
     return NULL;
 }

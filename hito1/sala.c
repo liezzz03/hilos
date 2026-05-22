@@ -47,10 +47,8 @@ int reserva_asiento(int id_persona) {
 
     for (int i = 0; i < n_asientos; i++) {
         if (asientos[i] == -1) {
-            // --- TRAMPA PARA EL HITO 1 ---
             // Simulamos que el sistema operativo cambia de hilo justo aquí
             pausa_aleatoria(0.1);
-            // -----------------------------
             asientos[i] = id_persona;
             return (i + 1);
         }

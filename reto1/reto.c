@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include "sala.h"
-#include "retardo.h"
+#include "../sala.h"
+#include "../retardo.h"
 
-// --- VARIABLES DE CONTROL ---
 int hombres_en_sala = 0;
 int mujeres_en_sala = 0;
 pthread_mutex_t mutex_reto = PTHREAD_MUTEX_INITIALIZER;
@@ -15,7 +14,7 @@ void* hilo_persona(void* arg) {
     // Convención: IDs < 200 son hombres, IDs >= 200 son mujeres
     int es_mujer = (id >= 200); 
 
-    // --- PROTOCOLO DE ENTRADA (Control de Ratio 60%) ---
+    // control de ratio 60%
     pthread_mutex_lock(&mutex_reto);
     int total = hombres_en_sala + mujeres_en_sala;
 
@@ -41,7 +40,7 @@ void* hilo_persona(void* arg) {
     // Simulación de tiempo de permanencia
     pausa_aleatoria(1.5);
 
-    // --- PROTOCOLO DE SALIDA ---
+    // salida
     pthread_mutex_lock(&mutex_reto);
     if (libera_asiento(asiento) != -1) {
         if (es_mujer) mujeres_en_sala--; else hombres_en_sala--;
