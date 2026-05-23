@@ -24,7 +24,7 @@ Para ejecutar por hitos se puede ejecutar las órdenes:
 *Para el hito3*
 
 
-> $ gcc -o reto1/reto reto.c reto1/sala.c retardo.c -lpthread
+> $ gcc -o reto1/reto reto1/sala.c reto1/reto.c retardo.c -lpthreadd
 
 > $ ./reto1/reto 12 2
 
