@@ -1,197 +1,163 @@
 #include <stdlib.h>
+#include "../sala.h"
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <pthread.h> // REQUISITO HITO 2: Para el Mutex
-#include "../sala.h"
+#include <fcntl.h> // para open() y las constantes O_RDONLY, ...
+#include <unistd.h> // para read, write, close
+#include "../retardo.h"
+#include <pthread.h> // Necesario para el mutex
 
-static int* asientos = NULL; 
-static int n_asientos = 0;   
+static int* asientos = NULL; // Puntero al arreglo de asientos (NULL si no hay sala creada)
+static int n_asientos = 0; //  número total de asientos en la sala
 
-// Cerrojo global para la exclusión mutua
 static pthread_mutex_t cerrojo = PTHREAD_MUTEX_INITIALIZER;
 
-// Función auxiliar interna (SÓLO se llama si ya se posee el mutex)
-// Evita el interbloqueo (deadlock) al no intentar bloquear el mutex otra vez.
-static int asientos_libres_interna() {
-    int ocupados = 0;
-    for (int i = 0; i < n_asientos; i++) {
-        if (asientos[i] != -1) ocupados++;
-    }
-    return n_asientos - ocupados;
-}
-
+//Crea una nueva sala con la capacidad especificada
+//Retorna el número de asientos si se crea correctamente, -1 en caso de error
 int crea_sala(int capacidad) {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos != NULL || capacidad < 1) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
+    // No permitir crear una sala si ya existe una o si la capacidad es inválida
+    if (asientos != NULL || capacidad < 1) return -1;
     asientos = (int*) malloc(capacidad * sizeof(int));
-    if (asientos == NULL) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1; 
-    }
+    if (asientos == NULL) return -1; // Error de memoria
 
     n_asientos = capacidad;
+    // Inicializar todos los asientos como libres (-1 indica libre)
     for (int i = 0; i < n_asientos; i++) {
         asientos[i] = -1;
     }
-    pthread_mutex_unlock(&cerrojo);
     return n_asientos;
 }
 
+// Retorna la capacidad total de la sala, o -1 si no existe
 int capacidad_sala() {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
-    int res = n_asientos;
-    pthread_mutex_unlock(&cerrojo);
-    return res;
+    if (asientos == NULL) return -1;
+    return n_asientos;
 }
 
+// Retorna el número de asientos ocupados, o -1 si no existe sala
 int asientos_ocupados() {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
+    if (asientos == NULL) return -1; //
     int ocupados = 0;
     for (int i = 0; i < n_asientos; i++) {
-        if (asientos[i] != -1) ocupados++;
+        // Asiento ocupado si no es -1
+        if (asientos[i] != -1) {
+            ocupados++;
+        }
     }
-    pthread_mutex_unlock(&cerrojo);
     return ocupados;
 }
 
+// Retorna el número de asientos libres, o -1 si no existe la sala
 int asientos_libres() {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
-    int libres = asientos_libres_interna();
-    pthread_mutex_unlock(&cerrojo);
-    return libres;
+    if (asientos == NULL) return -1;
+
+    int ocupados = asientos_ocupados();
+    if (ocupados == -1) return -1;
+
+    return n_asientos - ocupados;
 }
 
+//Reserva el primer asiento libre para la persona con id_persona
+//Retorna el id del asiento reservado, o -1 si falla
 int reserva_asiento(int id_persona) {
+    if (asientos == NULL || id_persona <= 0) return -1;
+
     pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_persona <= 0) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
-
-    // HITO 2: Si está llena, salimos inmediatamente con -1 (no bloqueamos el hilo todavía)
-    if (asientos_libres_interna() == 0) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1; 
-    }
-
     for (int i = 0; i < n_asientos; i++) {
-        if (asientos[i] == -1) { 
+        if (asientos[i] == -1) { // Encontrar primer asiento libre
+            //pausa_aleatoria(0.1);
             asientos[i] = id_persona;
             pthread_mutex_unlock(&cerrojo);
-            return (i + 1); 
+            return (i + 1); // Retornar id en rango [1, n_asientos]
         }
     }
     pthread_mutex_unlock(&cerrojo);
-    return -1; 
+    return -1; // Sala llena
 }
 
+// Librea el asiento especificado por id_asiento
+// Retorna el id de la persona que lo ocupaba, o -1 si falla
 int libera_asiento(int id_asiento) {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_asiento < 1 || id_asiento > n_asientos) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
+    if (asientos == NULL || id_asiento < 1 || id_asiento > n_asientos) return -1;
 
+    pthread_mutex_lock(&cerrojo);
     int index = id_asiento - 1;
     if (asientos[index] == -1) {
         pthread_mutex_unlock(&cerrojo);
-        return -1; 
+        return -1; // Asiento ya libre
     }
 
     int id_persona = asientos[index];
-    asientos[index] = -1; 
+    asientos[index] = -1; // Liberar asiento
     pthread_mutex_unlock(&cerrojo);
     return id_persona;
 }
 
+// Libera el asiento dependiendo del id de la persona
 int libera_persona(int id_persona) {
+    if (asientos == NULL || id_persona <= 0) return -1;
+
     pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_persona <= 0) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
     for (int i = 0; i < n_asientos; i++) {
         if (asientos[i] == id_persona) {
-            asientos[i] = -1; 
+            asientos[i] = -1; // Liberamos el asiento
             pthread_mutex_unlock(&cerrojo);
-            return (i + 1);    
+            return (i + 1);    // Devolvemos el número de asiento que ocupaba (1..N)
         }
     }
     pthread_mutex_unlock(&cerrojo);
-    return -1; 
+    return -1; // No se encontró a esa persona en la sala
 }
 
+// Elimina la sala y libera la memoria
+// Retorna 0 si se elimina correctamente, -1 si no existe la sala
 int elimina_sala() {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
+    if (asientos == NULL) return -1;
     free(asientos);
     asientos = NULL;
     n_asientos = 0;
-    pthread_mutex_unlock(&cerrojo);
     return 0;
 }
 
+// Retorna el estado del asiento: 0 si libre, id de persona si ocupado, -1 si error
 int estado_asiento(int id_asiento) {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_asiento < 1 || id_asiento > n_asientos) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
+    if (asientos == NULL || id_asiento < 1 || id_asiento > n_asientos) return -1;
     int val = asientos[id_asiento - 1];
-    int res = (val == -1) ? 0 : val;
-    pthread_mutex_unlock(&cerrojo);
-    return res;
+    return (val == -1) ? 0 : val;
 }
 
-int reserva_asiento_specifico(int id_asiento, int id_persona) {
+// Reserva un asiento específico para la persona con id_persona
+// Retorna el id del asiento si se reserva, -1 si falla
+int reserva_asiento_especifico(int id_asiento, int id_persona) {
+    if (asientos == NULL || id_persona <= 0) return -1;
+    if (id_asiento < 1 || id_asiento > n_asientos) return -1;
+
     pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_persona <= 0 || id_asiento < 1 || id_asiento > n_asientos) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
     if (asientos[id_asiento - 1] != -1) {
         pthread_mutex_unlock(&cerrojo);
-        return -1; 
+        return -1; // Asiento ya ocupado
     }
+
     asientos[id_asiento - 1] = id_persona;
     pthread_mutex_unlock(&cerrojo);
     return id_asiento;
 }
 
+// Implementación de la prueba de reserva múltiple (Todo o nada)
 int reserva_multiple(int npersonas, int* lista_id) {
-    pthread_mutex_lock(&cerrojo);
-    if (npersonas <= 0 || lista_id == NULL || asientos == NULL) {
-        pthread_mutex_unlock(&cerrojo);
-        return -1;
-    }
+    // Control de robustez: npersonas <= 0 o lista nula
+    if (npersonas <= 0 || lista_id == NULL) return -1;
 
-    if (asientos_libres_interna() < npersonas) {
+    pthread_mutex_lock(&cerrojo);
+    // REQUISITO: Todo o nada. Si no hay sitio para todos, no se sienta nadie
+    if (asientos_libres() < npersonas) {
         pthread_mutex_unlock(&cerrojo);
         return -1;
     }
 
     int exitos = 0;
     for (int i = 0; i < npersonas; i++) {
+        // Reservamos de forma directa para evitar interbloqueo con reserva_asiento
         for (int j = 0; j < n_asientos; j++) {
             if (asientos[j] == -1) {
                 asientos[j] = lista_id[i];
@@ -205,61 +171,114 @@ int reserva_multiple(int npersonas, int* lista_id) {
 }
 
 int guarda_estado_sala(const char* ruta_fichero){
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL) { pthread_mutex_unlock(&cerrojo); return -1; }
+    if (asientos == NULL) return -1;
+    // abrimos el fichero. 0664 permisos de lectura/escrityra (rw-rw-r--)
     int fd = open(ruta_fichero, O_WRONLY | O_CREAT | O_TRUNC, 0664);
-    if (fd == -1) { pthread_mutex_unlock(&cerrojo); return -1; }
-    if (write(fd, &n_asientos, sizeof(int)) != sizeof(int)) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    size_t bytes = n_asientos * sizeof(int);
-    if (write(fd, asientos, bytes) != (ssize_t)bytes) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    close(fd); pthread_mutex_unlock(&cerrojo); return 0;
+    if (fd == -1) return -1;
+    if (write(fd, &n_asientos, sizeof(int)) != sizeof(int)) {
+       close(fd);
+       return -1;
+    }
+    size_t bytes_a_escribir = n_asientos * sizeof(int);
+    if (write(fd, asientos, bytes_a_escribir) != bytes_a_escribir) {
+       close(fd);
+       return -1;
+    }
+    close(fd);
+    return 0;
 }
 
 int recupera_estado_sala(const char* ruta_fichero) {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL) { pthread_mutex_unlock(&cerrojo); return -1; }
+    if (asientos == NULL) return -1;
     int fd = open(ruta_fichero, O_RDONLY);
-    if (fd == -1) { pthread_mutex_unlock(&cerrojo); return -1; }
-    int cap_fichero;
-    if (read(fd, &cap_fichero, sizeof(int)) != sizeof(int)) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    if (cap_fichero != n_asientos) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    size_t bytes = n_asientos * sizeof(int);
-    if (read(fd, asientos, bytes) != (ssize_t)bytes) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    close(fd); pthread_mutex_unlock(&cerrojo); return 0;
+    if (fd == -1) return -1;
+    int capacidad_fichero;
+    //leemos la capacidad guardada en el fichero
+    if (read(fd, &capacidad_fichero, sizeof(int)) != sizeof(int)) {
+        close(fd);
+        return -1;
+    }
+    //la capacidad debe coincidir con la de la sala actual
+    if (capacidad_fichero != n_asientos) {
+        close(fd);
+        return -1;
+    }
+    //leemos el estado de los asientos y sobrescribimos el array actual
+    size_t bytes_a_leer = n_asientos * sizeof(int);
+    if (read(fd, asientos, bytes_a_leer) != bytes_a_leer) {
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 0;
 }
 
 int guarda_estado_parcial_sala(const char* ruta_fichero, size_t num_asientos, int* id_asientos) {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_asientos == NULL || num_asientos <= 0) { pthread_mutex_unlock(&cerrojo); return -1; }
+    if (asientos == NULL || id_asientos == NULL || num_asientos <= 0) return -1;
+    // Abrimos en modo Lectura/Escritura (O_RDWR) porque el fichero debe existir
     int fd = open(ruta_fichero, O_RDWR);
-    if (fd == -1) { pthread_mutex_unlock(&cerrojo); return -1; }
-    int cap_fichero;
-    if (read(fd, &cap_fichero, sizeof(int)) != sizeof(int)) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    if (cap_fichero != n_asientos) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    for (size_t k = 0; k < num_asientos; k++) {
-        int i = id_asientos[k];
-        if (i < 1 || i > n_asientos) continue;
-        off_t posicion = sizeof(int) + (i - 1) * sizeof(int);
-        if (lseek(fd, posicion, SEEK_SET) == -1) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-        if (write(fd, &asientos[i - 1], sizeof(int)) != sizeof(int)) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
+    if (fd == -1) return -1;
+    int capacidad_fichero;
+    if (read(fd, &capacidad_fichero, sizeof(int)) != sizeof(int)) {
+        close(fd);
+        return -1;
     }
-    close(fd); pthread_mutex_unlock(&cerrojo); return 0;
+    if (capacidad_fichero != n_asientos) {
+        close(fd);
+        return -1;
+    }
+    for (size_t k = 0; k < num_asientos; k++) {
+        int i = id_asientos[k]; //número de asiento (ej: 1, 5, 10...)
+        //validamos que el asiento solicitado esté en el rango de nuestra sala
+        if (i < 1 || i > n_asientos) {
+            continue;
+        }
+        //calculamos la posición exacta del asiento i en el fichero
+        //saltamos el primer int (capacidad) y luego (i-1) ints
+        off_t posicion = sizeof(int) + (i - 1) * sizeof(int);
+        if (lseek(fd, posicion, SEEK_SET) == -1) {
+            close(fd);
+            return -1;
+        }
+        //escribimos el estado actual de ese asiento que tenemos en memoria
+        //en el array 'asientos' el índice es (i-1)
+        if (write(fd, &asientos[i - 1], sizeof(int)) != sizeof(int)) {
+            close(fd);
+            return -1;
+        }
+    }
+    close(fd);
+    return 0;
 }
 
 int recupera_estado_parcial_sala(const char* ruta_fichero, size_t num_asientos, int* id_asientos) {
-    pthread_mutex_lock(&cerrojo);
-    if (asientos == NULL || id_asientos == NULL || num_asientos <= 0) { pthread_mutex_unlock(&cerrojo); return -1; }
-    int fd = open(ruta_fichero, O_RDONLY);
-    if (fd == -1) { pthread_mutex_unlock(&cerrojo); return -1; }
-    int cap_fichero;
-    if (read(fd, &cap_fichero, sizeof(int)) != sizeof(int)) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    if (cap_fichero != n_asientos) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-    for (size_t k = 0; k < num_asientos; k++) {
-        int i = id_asientos[k];
-        if (i < 1 || i > n_asientos) continue;
-        off_t posicion = sizeof(int) + (i - 1) * sizeof(int);
-        if (lseek(fd, posicion, SEEK_SET) == -1) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
-        if (read(fd, &asientos[i - 1], sizeof(int)) != sizeof(int)) { close(fd); pthread_mutex_unlock(&cerrojo); return -1; }
+    if (asientos == NULL || id_asientos == NULL || num_asientos <= 0) return -1;
+    int fd = open(ruta_fichero, O_RDONLY); //modo solo lectura
+    if (fd == -1) return -1;
+    int capacidad_fichero;
+    if (read(fd, &capacidad_fichero, sizeof(int)) != sizeof(int)) {
+        close(fd);
+        return -1;
     }
-    close(fd); pthread_mutex_unlock(&cerrojo); return 0;
+    if (capacidad_fichero != n_asientos) {
+        close(fd);
+        return -1;
+    }
+    for (size_t k = 0; k < num_asientos; k++) {
+        int i = id_asientos[k]; //número de asiento (1 a N)
+        if (i < 1 || i > n_asientos) {
+            continue;
+        }
+        off_t posicion = sizeof(int) + (i - 1) * sizeof(int);
+        if (lseek(fd, posicion, SEEK_SET) == -1) {
+            close(fd);
+            return -1;
+        }
+        if (read(fd, &asientos[i - 1], sizeof(int)) != sizeof(int)) {
+            close(fd);
+            return -1;
+        }
+    }
+    close(fd);
+    return 0;
 }
