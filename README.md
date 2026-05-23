@@ -13,19 +13,19 @@ Para ejecutar por hitos se puede ejecutar las órdenes:
 
 > $ gcc -o hito2/multihilos hito2/multihilos.c hito2/sala.c retardo.c -lpthread
 
-> $ ./hito2/multhilos 100
+> $ ./hito2/multihilos 100
 
 *Para el hito2*
 
-> $ gcc -o hito2/multihilos hito2/multihilos.c hito2/sala.c retardo.c -lpthread
+> $ gcc -o hito3/multihilos hito3/multihilos.c hito3/sala.c retardo.c -lpthread
 
-> $ ./hito2/multhilos 6 6
+> $ ./hito3/multhilos 6 6
 
 *Para el hito3*
 
 
-> $ gcc -o reto1/reto reto.c hito3/sala.c retardo.c -lpthread
+> $ gcc -o reto1/reto reto.c reto1/sala.c retardo.c -lpthread
 
 > $ ./reto1/reto 12 2
 
-*Para el reto*
+*Para el reto1* 
